@@ -1,0 +1,12 @@
+{
+  "format": "lerobot_degrees",
+  "description": "Measured folded HOME/start pose from the photographed arm on 2026-09-15.",
+  "joints_lerobot_deg": {
+    "shoulder_pan": -4.043956,
+    "shoulder_lift": 96.703297,
+    "elbow_flex": -108.307692,
+    "wrist_flex": 88.483516,
+    "wrist_roll": 0.747253,
+    "gripper": 1.914486
+  }
+}

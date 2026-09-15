@@ -1,0 +1,12 @@
+{
+  "format": "lerobot_degrees",
+  "description": "Measured, user-approved Xbox teleoperation neutral pose",
+  "joints_lerobot_deg": {
+    "shoulder_pan": -5.626374,
+    "shoulder_lift": 10.021978,
+    "elbow_flex": -24.175824,
+    "wrist_flex": 73.802198,
+    "wrist_roll": -0.923077,
+    "gripper": 1.276324
+  }
+}

@@ -1,0 +1,10 @@
+# Reconstructed from environment/VERSIONS.md and the project imports.
+# Keep NumPy below 2.3 because LeRobot 0.5.1 declares that upper bound.
+lerobot[feetech,gamepad,phone]==0.5.1
+torch==2.10.0
+numpy>=2.0,<2.3
+opencv-python==4.13.0.90
+pyserial==3.5
+pygame>=2.6,<3
+pyobjc-framework-GameController==12.2.2
+pin

@@ -1,0 +1,38 @@
+# Local Python/runtime environments
+.venv/
+.uv-python/
+.uv-cache/
+.tools/
+
+# Local Hugging Face and LeRobot state
+.hf-home/
+.lerobot/
+
+# Generated Python files
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+
+# macOS and editor metadata
+.DS_Store
+.idea/
+.vscode/
+
+# Machine-specific snapshots and local test data
+environment/
+data/
+NOTES.md
+
+# Generated datasets, logs, and model weights
+outputs/
+checkpoints/
+datasets/
+logs/
+wandb/
+*.log
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+

@@ -1,0 +1,12 @@
+{
+  "format": "lerobot_degrees",
+  "description": "URDF-derived operating pose; pending first physical deployment validation.",
+  "joints_lerobot_deg": {
+    "shoulder_pan": 0.0,
+    "shoulder_lift": -30.0,
+    "elbow_flex": 60.0,
+    "wrist_flex": -30.0,
+    "wrist_roll": 0.0,
+    "gripper": null
+  }
+}
