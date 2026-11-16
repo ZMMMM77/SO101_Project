@@ -1,121 +1,72 @@
-# SO-101 Xbox Controller
+# SO-101 ROS 2 Control
 
-Controller and diagnostic tools for operating an SO-101 follower arm from an
-Xbox Series controller on macOS. The main controller supports direct joint
-control, Cartesian XYZ control, a folded HOME pose, and a captured NEUTRAL
-working pose.
+ROS 2 Jazzy control for an SO-101 follower arm, with Xbox teleoperation,
+wrist and overhead cameras, and motor diagnostics.
 
-## Current control behavior
+## Setup
 
-- 20 Hz controller input and robot command loop
-- One motor-bus position read and one synchronized six-motor write per cycle
-- Quintic joint-space trajectory between HOME and NEUTRAL
-- RB deadman switch and B-button software emergency stop
-- Calibrated joint limits and per-cycle relative-target limiting
-- Simultaneous multi-joint input
-
-### JOINT mode
-
-Hold `RB` while commanding motion.
-
-| Input | Joint/action |
-| --- | --- |
-| Left stick left/right | Base / shoulder pan |
-| Left stick up/down | Shoulder lift |
-| Right stick up/down | Elbow flex |
-| `Y` / `X` | Wrist flex in opposite directions |
-| Right stick left/right | Wrist roll |
-| `RT` / `LT` | Open / close gripper |
-
-Click the left stick while `RB` is released to toggle JOINT and XYZ modes.
-Hold `RB` and tap `LB` to move between HOME and NEUTRAL. Releasing `RB` during
-the trajectory cancels the move and holds the measured pose.
-
-## Project layout
-
-```text
-SO101_Project/
-├── README.md
-├── LICENSE
-├── requirements-so101.txt
-├── activate_so101.zsh
-├── *.py
-├── xbox_controller/
-├── scripts/
-├── simulation/
-├── config/
-└── .gitignore
-```
-
-## Installation
-
-Python 3.12 is recommended.
+On Ubuntu 24.04, install [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html),
+`colcon`, and Python 3.12 with `venv`. From the checkout, run:
 
 ```bash
-python3.12 -m venv .venv
+source /opt/ros/jazzy/setup.bash
+python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements-so101.txt
-```
-
-The checked-in `config/my_follower.json`, `folded_pose.json`, and
-`neutral_pose.json` are hardware-specific. Do not apply this calibration to a
-different arm without checking or recalibrating it first.
-
-For the included `my_follower` calibration, create the local LeRobot path after
-cloning:
-
-```bash
+python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.10.0 torchvision==0.25.0
+python -m pip install -r requirements-ros2.txt
 mkdir -p .lerobot/calibration/robots/so_follower
-ln -s ../../../../config/my_follower.json \
-  .lerobot/calibration/robots/so_follower/my_follower.json
+ln -s ../../../../config/my_follower.json .lerobot/calibration/robots/so_follower/my_follower.json
+colcon build --base-paths ros2 --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
 ```
 
-Find the current USB serial port with:
+Use the calibration and recorded poses for your arm. Connect the arm, both
+cameras, and the Xbox controller to Ubuntu. On VMware, attach the USB
+devices or the Bluetooth adapter to the guest. If your serial port belongs
+to `dialout`, run `sudo usermod -aG dialout "$USER"` and sign in again.
+
+## Run
+
+In each new terminal, source the ROS installation and the project environment.
 
 ```bash
+cd ~/SO101_Project
+source /opt/ros/jazzy/setup.bash
 source .venv/bin/activate
-lerobot-find-port
+source install/setup.bash
+ros2 launch so101_bringup so101.launch.py
 ```
 
-The launch scripts currently contain the original Mac USB port. Pass the
-current port to the main launcher when it differs:
+Motion is disabled by default. Use the launch arguments `wrist_device` and
+`top_device` to match the physical cameras. Images are published on
+`/so101/wrist/image_raw` and `/so101/top/image_raw`.
+
+After verifying the controller and serial port, stop the preview launch,
+support the arm, release the sticks, triggers, and `RB`, then run:
 
 ```bash
-./xbox_controller/run_safe_control.sh --port /dev/cu.usbmodemYOUR_PORT
+ros2 launch so101_bringup so101.launch.py enable_motion:=true port:=/dev/ttyACM0
 ```
 
-## Input-only test
+Support the arm before stopping the live launch. See the
+[Xbox guide](xbox_controller/README.md) for the controls and macOS setup.
 
-Pair the Xbox controller in macOS Bluetooth settings, then run:
+## ROS tools
 
-```bash
-./xbox_controller/run_input_test.sh
-```
+Run diagnostics in a sourced terminal after stopping any live process that
+uses the same serial port.
 
-This test does not connect to the robot.
+| Task | Command |
+| --- | --- |
+| Xbox offline test | `ros2 run so101_bringup tool xbox self-test` |
+| Read-only motor scan | `ros2 run so101_bringup tool scan` |
+| Joint test | `ros2 run so101_bringup tool joint-test --help` |
+| Cartesian control | `ros2 run so101_bringup tool cartesian --help` |
+| iPhone teleoperation | `ros2 run so101_bringup tool iphone --help` |
+| Freedrive and CSV | `ros2 run so101_bringup tool freedrive --help` |
 
-## Offline controller test
+The Jazzy build, simultaneous 640×360 camera streams, and offline Xbox
+safety logic were verified on VMware Ubuntu. Live ROS teleoperation still
+requires hardware validation.
 
-```bash
-.venv/bin/python xbox_controller/xbox_official_control.py self-test
-.venv/bin/python xbox_controller/test_xbox_teleoperator.py
-```
-
-These tests do not connect to the controller or robot.
-
-## Real-arm operation
-
-Power the arm, support it during startup, keep the workspace clear, and run:
-
-```bash
-./xbox_controller/run_safe_control.sh --port /dev/cu.usbmodemYOUR_PORT
-```
-
-Wait until the current pose has been captured and held before releasing the
-arm. Release `RB` immediately if motion is unexpected. Use `MENU` to exit.
-
-## License
-
-Apache License 2.0. See [LICENSE](LICENSE).
-
+[Apache License 2.0](LICENSE)

@@ -51,7 +51,7 @@ def move_and_report(robot: SO101Follower, title: str, target: dict[str, float], 
     time.sleep(pause_s)
 
 
-def main() -> None:
+def main(robot_factory=SO101Follower) -> None:
     parser = argparse.ArgumentParser(
         description="Connect to a calibrated SO-101 follower and optionally test small motion on each joint."
     )
@@ -91,7 +91,7 @@ def main() -> None:
         id=args.id,
         max_relative_target=10.0,
     )
-    robot = SO101Follower(config)
+    robot = robot_factory(config)
 
     try:
         robot.connect()

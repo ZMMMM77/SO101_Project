@@ -280,6 +280,9 @@ def command_capture(args: argparse.Namespace) -> None:
         input("Press ENTER when the pose is stable...")
         positions = robot.bus.sync_read("Present_Position")
         obs = {f"{name}.pos": float(value) for name, value in positions.items()}
+        from so101_events import report_position
+
+        report_position(obs)
         q = cart.lerobot_deg_to_model_rad([obs[key] for key in cart.ARM_OBSERVATION_KEYS])
         violations = kin.joint_limit_violations(q)
         if violations:
@@ -311,7 +314,15 @@ def print_controls(has_operating_pose: bool) -> None:
         print("  NOTE: deployment is disabled until a NEUTRAL pose is captured.")
 
 
-def command_control(args: argparse.Namespace) -> None:
+def control_steps(
+    args: argparse.Namespace,
+    *,
+    teleop_factory=XboxLeRobotTeleop,
+    driver_factory=driver_for,
+    observation_callback=None,
+    action_callback=None,
+):
+    """Yield after each control cycle for either the CLI loop or a ROS timer."""
     if not args.execute:
         raise ControlError("Real control requires --execute.")
     cart = cart_module()
@@ -323,7 +334,7 @@ def command_control(args: argparse.Namespace) -> None:
     # SO-101 gripper observations/actions use LeRobot's normalized 0..100 range,
     # unlike the five arm joints which use calibrated degrees.
     grip_limits = (2.0, 98.0)
-    teleop = XboxLeRobotTeleop(
+    teleop = teleop_factory(
         controller_index=args.controller_index,
         deadzone=args.deadzone,
         trigger_threshold=args.trigger_threshold,
@@ -338,7 +349,7 @@ def command_control(args: argparse.Namespace) -> None:
         if not neutral(state):
             raise ControlError("Release RB, triggers, and both sticks before startup.")
         print(f"Connected controller: {teleop.name}")
-        driver = driver_for(args, cart)
+        driver = driver_factory(args, cart)
         obs = driver.observation()
         measured_q = driver.arm_q_model_rad(obs)
         measured_g = float(obs[cart.GRIPPER_KEY])
@@ -400,6 +411,8 @@ def command_control(args: argparse.Namespace) -> None:
                 print("\nMENU pressed. Exiting.")
                 break
             obs = driver.observation()
+            if observation_callback is not None:
+                observation_callback(obs)
             measured_q = driver.arm_q_model_rad(obs)
             measured_g = float(obs[cart.GRIPPER_KEY])
 
@@ -537,12 +550,12 @@ def command_control(args: argparse.Namespace) -> None:
                 ))
                 at_home = False
 
-            hold_q, hold_g = sent_state(
-                cart,
-                send_with_cached_safety_limit(
-                    driver, cart, hold_q, hold_g, obs, args.max_relative_target_deg
-                ),
+            sent = send_with_cached_safety_limit(
+                driver, cart, hold_q, hold_g, obs, args.max_relative_target_deg
             )
+            if action_callback is not None:
+                action_callback(sent)
+            hold_q, hold_g = sent_state(cart, sent)
             rate_cycles += 1
             rate_elapsed = time.monotonic() - rate_started
             if rate_elapsed >= 1.0:
@@ -569,7 +582,7 @@ def command_control(args: argparse.Namespace) -> None:
             last_rb, last_lb = state.rb, state.lb
             last_b, last_a, last_view = state.b, state.a, state.view
             last_left_stick = state.left_stick
-            time.sleep(max(period - (time.monotonic() - started), 0.0))
+            yield max(period - (time.monotonic() - started), 0.0)
     finally:
         teleop.disconnect()
         if driver is not None and driver.robot is not None and driver.robot.is_connected:
@@ -588,6 +601,14 @@ def command_control(args: argparse.Namespace) -> None:
                     print(f"\nWARNING: final hold failed: {exc}")
                 cart.wait_before_releasing_torque()
             driver.disconnect()
+
+
+def command_control(args: argparse.Namespace) -> None:
+    from contextlib import closing
+
+    with closing(control_steps(args)) as steps:
+        for remaining in steps:
+            time.sleep(remaining)
 
 
 def main() -> int:

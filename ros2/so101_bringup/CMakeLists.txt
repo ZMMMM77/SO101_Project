@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.16)
+project(so101_bringup)
+find_package(ament_cmake REQUIRED)
+
+foreach(node xbox_input follower camera tool)
+  install(PROGRAMS nodes/${node}.py DESTINATION lib/${PROJECT_NAME} RENAME ${node})
+endforeach()
+install(FILES nodes/common.py DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+ament_package()

@@ -437,11 +437,15 @@ class SO101Driver:
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
             try:
-                return self.robot.get_observation()
+                observation = self.robot.get_observation()
             except Exception as exc:
                 last_error = exc
                 if attempt < attempts:
                     time.sleep(retry_delay_s * attempt)
+            else:
+                from so101_events import report_position
+
+                return report_position(observation)
 
         raise CartesianControlError(
             f"Failed to read SO-101 observation after {attempts} attempts: {last_error}"
@@ -457,7 +461,9 @@ class SO101Driver:
         joints_deg = model_rad_to_lerobot_deg(q_arm_rad)
         action = {key: float(value) for key, value in zip(ARM_OBSERVATION_KEYS, joints_deg, strict=True)}
         action[GRIPPER_KEY] = float(gripper_value)
-        return self.robot.send_action(action)
+        from so101_events import report_position
+
+        return report_position(self.robot.send_action(action), command=True)
 
 
 def print_joint_state(q_arm_rad: Sequence[float], label: str) -> None:

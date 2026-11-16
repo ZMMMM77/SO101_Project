@@ -222,7 +222,9 @@ class SO101FreedriveSDK:
         self._require_connected()
         assert self._leader is not None
         action = self._leader.get_action()
-        return {key: float(action[key]) for key in ACTION_KEYS}
+        from so101_events import report_position
+
+        return report_position({key: float(action[key]) for key in ACTION_KEYS})
 
     def read_joints(self) -> dict[str, float]:
         """Return joint names without the LeRobot ``.pos`` suffix."""

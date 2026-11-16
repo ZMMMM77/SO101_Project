@@ -157,7 +157,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main(robot_factory=SO101Follower) -> None:
     args = parse_args()
     period_s = 1.0 / args.fps
 
@@ -176,7 +176,7 @@ def main() -> None:
     robot = None
     should_connect_robot = args.enable_motion or args.connect_robot_in_dry_run
     if should_connect_robot:
-        robot = SO101Follower(
+        robot = robot_factory(
             SO101FollowerConfig(
                 port=args.port,
                 id=args.id,

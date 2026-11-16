@@ -1,0 +1,9 @@
+# For Ubuntu / ROS 2 Jazzy with Python 3.12.
+# Install CPU torch 2.10.0 and torchvision 0.25.0 first for the VMware USB host.
+lerobot[feetech,gamepad,phone]==0.5.1
+torch==2.10.0
+torchvision==0.25.0
+numpy>=2.0,<2.3
+opencv-python-headless==4.13.0.90
+pyserial==3.5
+pin==4.1.0
