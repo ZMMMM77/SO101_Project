@@ -2,6 +2,7 @@
 """Publish the two UVC cameras in USB stream startup order."""
 
 from pathlib import Path
+import subprocess
 
 import cv2
 import rclpy
@@ -12,13 +13,48 @@ from sensor_msgs.msg import Image
 from common import init_ros
 
 
+def resolve_camera_devices(devices):
+    auto_views = [view for view in ("top", "wrist") if devices[view] == "auto"]
+    if not auto_views:
+        return devices
+
+    assigned = {Path(device).resolve() for device in devices.values() if device != "auto"}
+    candidates = []
+    for device in Path("/dev").glob("video[0-9]*"):
+        if device in assigned:
+            continue
+        info = subprocess.run(
+            ["udevadm", "info", "--query=property", "--name", str(device)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if info.returncode:
+            continue
+        properties = dict(line.split("=", 1) for line in info.stdout.splitlines() if "=" in line)
+        camera_id = (properties.get("ID_VENDOR_ID"), properties.get("ID_MODEL_ID"))
+        if camera_id == ("0c45", "6366") and ":capture:" in properties.get("ID_V4L_CAPABILITIES", ""):
+            candidates.append((properties.get("ID_PATH", str(device)), device))
+
+    if len(candidates) != len(auto_views):
+        found = ", ".join(str(device) for _, device in sorted(candidates)) or "none"
+        raise RuntimeError(
+            f"Expected {len(auto_views)} unassigned InnoMaker capture device(s), found {found}. "
+            "Check the USB connections or set wrist_device and top_device explicitly."
+        )
+
+    for view, (_, device) in zip(auto_views, sorted(candidates)):
+        devices[view] = str(device)
+    return devices
+
+
 class UvcCameras(Node):
     def __init__(self):
         super().__init__("cameras")
-        devices = {
-            "wrist": self.declare_parameter("wrist_device", "/dev/video0").value,
-            "top": self.declare_parameter("top_device", "/dev/video2").value,
-        }
+        devices = resolve_camera_devices({
+            "wrist": self.declare_parameter("wrist_device", "auto").value,
+            "top": self.declare_parameter("top_device", "auto").value,
+        })
         if Path(devices["wrist"]).resolve() == Path(devices["top"]).resolve():
             raise ValueError("wrist_device and top_device must refer to different cameras")
         width = self.declare_parameter("width", 640).value
