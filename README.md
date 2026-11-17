@@ -3,6 +3,18 @@
 ROS 2 Jazzy control for an SO-101 follower arm, with Xbox teleoperation,
 wrist and overhead cameras, and motor diagnostics.
 
+## Project layout
+
+| Path | Purpose |
+| --- | --- |
+| `ros2/so101_bringup/` | ROS nodes, launch files, and hardware interfaces |
+| `xbox_controller/`, `scripts/` | Teleoperation, hardware utilities, and diagnostics |
+| `config/`, `simulation/` | Robot calibration and the URDF |
+| `vla/` | [MCAP recording, LeRobot conversion, and SmolVLA training](vla/README.md) |
+| `data/raw/`, `data/lerobot/` | Local ROS recordings and converted datasets |
+| `third_party/lerobot/` | Pinned official LeRobot source checkout |
+| `outputs/` | Local training outputs and checkpoints |
+
 ## Setup
 
 On Ubuntu 24.04, install [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html),
@@ -37,9 +49,11 @@ source install/setup.bash
 ros2 launch so101_bringup so101.launch.py
 ```
 
-Motion is disabled by default. Use the launch arguments `wrist_device` and
-`top_device` to match the physical cameras. Images are published on
-`/so101/wrist/image_raw` and `/so101/top/image_raw`.
+Motion is disabled by default. At startup, the camera node discovers both
+InnoMaker U20CAM-1080P-S1 capture devices and assigns `top` then `wrist` in USB
+path order. Check the startup log and verify the views after moving cables.
+Use `wrist_device` and `top_device` to override the assignments. Images are
+published on `/so101/wrist/image_raw` and `/so101/top/image_raw`.
 
 After verifying the controller and serial port, stop the preview launch,
 support the arm, release the sticks, triggers, and `RB`, then run:

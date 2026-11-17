@@ -41,3 +41,6 @@ wandb/
 /build/
 /install/
 /log/
+
+# Version-pinned external source checkout
+/third_party/lerobot/
