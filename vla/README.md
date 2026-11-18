@@ -51,15 +51,47 @@ Review the camera roles and the alignment at gripper closure and object lift. Th
 
 ## Train on WSL
 
-Copy the project code and the converted dataset to WSL. Use a fresh WSL virtual environment with CUDA-enabled PyTorch and install the official checkout with its SmolVLA dependencies.
+Prepare a separate WSL Python 3.12 environment at `~/SO101_Training/.venv`
+with `torch==2.10.0+cu126`, `torchvision==0.25.0+cu126`,
+`torchcodec==0.10.0`, and `lerobot[smolvla]==0.5.1`.
+The training script selects PyAV for video decoding.
+
+VMware retains the project and datasets. Set `VM` to the VMware SSH account
+and reachable address, then mount its project read-only from WSL.
+Install `sshfs` and `rsync` in WSL if needed.
 
 ```bash
-nvidia-smi
-python -m pip install -e './third_party/lerobot[smolvla]'
-python -m vla.train_smolvla data/lerobot/pick_place \
-  --output outputs/train/pick_place_smoke --steps 5 --batch-size 1
+VM="<VM_USER>@<VM_HOST>"
+mkdir -p ~/mnt/SO101_Project
+sshfs -o ro,reconnect,ServerAliveInterval=15 "${VM}:SO101_Project" ~/mnt/SO101_Project
 ```
 
-The training entry point calls the official LeRobot trainer and maps the top and wrist views to `camera1` and `camera2` for `lerobot/smolvla_base`. Training outputs are local. After a short run on the target GPU, choose a full training schedule and an unused output path.
+Activate the WSL environment and keep caches and outputs on its local filesystem.
 
-A trained policy requires a ROS 2 action-execution interface before live control. The current follower consumes `/so101/joy` for Xbox control and publishes `/so101/joint_targets` for observation and recording.
+```bash
+source ~/SO101_Training/.venv/bin/activate
+export HF_HOME="$HOME/SO101_Training/.hf-home"
+export HF_LEROBOT_HOME="$HOME/SO101_Training/.lerobot"
+cd ~/mnt/SO101_Project
+python -m vla.train_smolvla data/lerobot/pick_place \
+  --output "$HOME/SO101_Training/outputs/pick_place_smoke" --steps 5 --batch-size 1
+```
+
+The trainer loads `lerobot/smolvla_base` and maps the top and wrist views to
+`camera1` and `camera2`. Use a new output directory for each run. After a short
+test, measure sustained training speed and GPU memory before choosing a full schedule.
+
+Copy the complete run back to VMware, including the optimizer state and processors.
+
+```bash
+ssh "$VM" 'mkdir -p ~/SO101_Project/outputs'
+rsync -a --info=progress2 "$HOME/SO101_Training/outputs/pick_place_smoke" "${VM}:SO101_Project/outputs/"
+```
+
+A five-step test with the official `lerobot/svla_so100_pickplace` dataset
+passed on the 6 GB RTX 3060 Laptop GPU. The returned model's SHA-256 matched
+the WSL copy. Custom demonstrations still require capture and validation.
+
+A trained policy requires a ROS 2 action-execution interface before live control.
+The current follower consumes `/so101/joy` for Xbox control and publishes
+`/so101/joint_targets` for observation and recording.
