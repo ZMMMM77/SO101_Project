@@ -304,10 +304,11 @@ def print_controls(has_operating_pose: bool) -> None:
     print("  click LEFT STICK with RB released to toggle JOINT / XYZ")
     print("  XYZ mode: RB + left X/Y, right Y=Z, right X=wrist roll")
     print("  RB + RT / LT            open / close gripper")
-    print("  RB + tap LB             toggle smoothly between HOME and NEUTRAL")
-    print("  release RB              hold immediately / cancel deployment")
+    print("  Hold A alone            return to NEUTRAL while keeping the gripper in place")
+    print("  RB + tap LB             toggle smoothly between folded HOME and NEUTRAL")
+    print("  release the motion button to stop and hold")
     print("  B                       software E-stop")
-    print("  A with RB released      reset software E-stop")
+    print("  A after E-stop          clear E-stop; release A before pressing again to move")
     print("  VIEW                    print joints and FK")
     print("  MENU                    exit")
     if not has_operating_pose:
@@ -383,12 +384,14 @@ def control_steps(
         rate_started = last_time
         rate_cycles = 0
         actual_hz = 0.0
-        last_rb = last_lb = last_b = last_a = last_view = last_left_stick = False
+        last_rb = last_lb = last_b = last_view = last_left_stick = False
+        last_a = state.a
         estop = False
         control_mode = "JOINT"
         deploy: list[np.ndarray] = []
         deploy_index = 0
         deploy_destination = ""
+        deploy_button = ""
         operating_g = measured_g
         at_home = np.max(np.abs(np.rad2deg(measured_q - home_pose[0]))) <= 10.0
         operating_reached = (
@@ -396,8 +399,11 @@ def control_steps(
             and np.max(np.abs(np.rad2deg(measured_q - operating_pose[0]))) <= 10.0
         )
         rearm_required = False
+        last_target_change = last_time
+        last_feedback_change = last_time
+        settled_q, settled_g = measured_q.copy(), measured_g
         if not operating_reached:
-            print("\nHOME/STARTUP LOCKED: only RB + LB deployment is accepted.")
+            print("\nHOME/STARTUP LOCKED: hold A with sticks, triggers, LB and RB released to reach NEUTRAL.")
 
         while True:
             started = time.monotonic()
@@ -415,12 +421,22 @@ def control_steps(
                 observation_callback(obs)
             measured_q = driver.arm_q_model_rad(obs)
             measured_g = float(obs[cart.GRIPPER_KEY])
+            previous_target_q, previous_target_g = hold_q.copy(), hold_g
+            if (
+                np.max(np.abs(measured_q - settled_q)) > math.radians(0.5)
+                or abs(measured_g - settled_g) > 0.5
+            ):
+                last_feedback_change = now
+                settled_q, settled_g = measured_q.copy(), measured_g
 
+            a_pressed = state.a and not last_a
             if events["emergency_stop"] and not last_b:
                 estop, deploy, deploy_index = True, [], 0
+                deploy_destination = deploy_button = ""
                 hold_q, hold_g = measured_q.copy(), measured_g
                 print("\nSOFTWARE E-STOP LATCHED.")
-            if events["reset_emergency_stop"] and not last_a and not state.rb and not state.b:
+            reset_estop = estop and a_pressed and not state.rb and not state.b
+            if reset_estop:
                 estop = False
                 hold_q, hold_g = measured_q.copy(), measured_g
                 print("\nSoftware E-stop reset.")
@@ -436,54 +452,63 @@ def control_steps(
                 hold_q, hold_g = measured_q.copy(), measured_g
                 print(f"\nControl mode changed to {control_mode}.")
 
-            if state.rb and state.lb and not last_lb and not estop:
-                if operating_reached:
-                    target_q, saved_g = home_pose
-                    operating_g = measured_g if saved_g is None else saved_g
-                    deploy_destination = "HOME"
-                elif operating_pose is None:
+            if not state.rb and last_rb:
+                # Keep the supporting setpoint when already stopped. During
+                # motion, stop chasing the old target and hold the feedback.
+                settled = now - max(last_target_change, last_feedback_change) >= 0.20
+                if deploy or not settled:
+                    hold_q, hold_g = measured_q.copy(), measured_g
+                rearm_required = False
+            if state.a and state.rb and not rearm_required:
+                hold_q, hold_g = measured_q.copy(), measured_g
+                rearm_required = True
+
+            a_held_alone = state.a and not state.lb and neutral(state)
+            if deploy and not (a_held_alone if deploy_button == "A" else state.rb and not state.a):
+                print(f"\n{deploy_button} released or another control moved: "
+                      f"move to {deploy_destination} cancelled and pose held.")
+                deploy, deploy_index = [], 0
+                deploy_destination = deploy_button = ""
+                hold_q, hold_g = measured_q.copy(), measured_g
+
+            return_requested = a_pressed and a_held_alone and not reset_estop
+            combo_requested = state.rb and state.lb and not last_lb and not state.a
+            if not estop and not rearm_required and not deploy and (return_requested or combo_requested):
+                go_home = combo_requested and operating_reached
+                pose = home_pose if go_home else operating_pose
+                if pose is None:
                     print("\nDeployment disabled: capture a verified NEUTRAL pose first.")
                 else:
-                    operating_q, saved_g = operating_pose
-                    operating_g = measured_g if saved_g is None else saved_g
-                    target_q = operating_q
-                    deploy_destination = "NEUTRAL"
-                if deploy_destination:
+                    target_q, saved_g = pose
+                    operating_g = measured_g if return_requested or saved_g is None else saved_g
+                    deploy_destination = "HOME" if go_home else "NEUTRAL"
+                    deploy_button = "A" if return_requested else "RB"
                     deploy = reset_plan(kin, measured_q, target_q, args.deploy_speed_deg_s, args.hz)
                     deploy_index = 0
                     operating_reached = False
                     at_home = False
-                    rearm_required = False
                     if not deploy:
                         operating_reached = deploy_destination == "NEUTRAL"
                         at_home = deploy_destination == "HOME"
-                        rearm_required = True
-                        print(f"\nAlready at {deploy_destination} pose. Release RB once.")
+                        rearm_required = state.rb
+                        print(f"\nAlready at {deploy_destination} pose. Release {deploy_button}.")
+                        deploy_destination = deploy_button = ""
                     else:
-                        print(
-                            f"\nMOVE TO {deploy_destination}: {len(deploy)} synchronized steps. "
-                            "Keep holding RB."
-                        )
+                        print(f"\nMOVE TO {deploy_destination}: {len(deploy)} synchronized steps. "
+                              f"Keep holding {deploy_button}.")
 
-            if not state.rb and last_rb:
-                if deploy:
-                    print(f"\nRB released: move to {deploy_destination} cancelled and pose held.")
-                deploy, deploy_index = [], 0
-                deploy_destination = ""
-                hold_q, hold_g = measured_q.copy(), measured_g
-                rearm_required = False
-
-            enabled = state.rb and not estop and not rearm_required
-            if deploy and enabled:
-                hold_q, hold_g = deploy[deploy_index].copy(), operating_g
+            enabled = state.rb and not state.a and not estop and not rearm_required
+            if deploy and not estop:
+                hold_q, hold_g = deploy[min(deploy_index, len(deploy) - 1)].copy(), operating_g
                 deploy_index += 1
-                if deploy_index >= len(deploy):
+                at_target = np.max(np.abs(measured_q - deploy[-1])) <= math.radians(2.0)
+                if deploy_index >= len(deploy) and (deploy_button == "RB" or at_target):
                     deploy, deploy_index = [], 0
                     operating_reached = deploy_destination == "NEUTRAL"
                     at_home = deploy_destination == "HOME"
-                    rearm_required = True
-                    print(f"\n{deploy_destination} POSE REACHED. Release RB once.")
-                    deploy_destination = ""
+                    rearm_required = state.rb
+                    print(f"\n{deploy_destination} POSE REACHED. Release {deploy_button}.")
+                    deploy_destination = deploy_button = ""
             elif enabled and operating_reached and not state.lb and control_mode == "JOINT":
                 joint_commands = np.asarray(
                     [
@@ -556,6 +581,11 @@ def control_steps(
             if action_callback is not None:
                 action_callback(sent)
             hold_q, hold_g = sent_state(cart, sent)
+            if (
+                not np.allclose(hold_q, previous_target_q, rtol=0.0, atol=1e-7)
+                or abs(hold_g - previous_target_g) > 1e-4
+            ):
+                last_target_change = now
             rate_cycles += 1
             rate_elapsed = time.monotonic() - rate_started
             if rate_elapsed >= 1.0:
