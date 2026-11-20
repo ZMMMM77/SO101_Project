@@ -58,14 +58,15 @@ Motion is disabled by default. Two InnoMaker U20CAM-1080P-S1 cameras are assigne
 `/so101/top/image_raw` and `/so101/wrist/image_raw`.
 
 After checking the controller and port, stop the preview, support the arm,
-and release the sticks, triggers, and `RB` before starting live control.
+and release the sticks, triggers, `A`, and `RB` before starting live control.
 
 ```bash
 ros2 launch so101_bringup so101.launch.py enable_motion:=true port:=/dev/ttyACM0
 ```
 
-Hold `RB` to move. Release `RB` and click the left stick to switch JOINT/XYZ.
-Support the arm before stopping.
+Hold `RB` for manual motion or hold `A` alone to return to NEUTRAL. Press
+`B` for a software E-stop. Release `RB` and click the left stick to switch
+JOINT/XYZ. Support the arm before stopping.
 [Xbox controls](xbox_controller/README.md)
 
 ## VLA workflow
