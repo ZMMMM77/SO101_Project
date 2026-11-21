@@ -21,6 +21,7 @@ def generate_launch_description():
         "xbox": "true",
         "controller_index": "0",
         "enable_motion": "false",
+        "policy_mode": "off",
         "follower": "true",
     }
     arguments = [DeclareLaunchArgument(key, default_value=value) for key, value in defaults.items()]
@@ -44,6 +45,7 @@ def generate_launch_description():
             output="screen", condition=IfCondition(LaunchConfiguration("follower")),
             parameters=[project, {
                 "port": LaunchConfiguration("port"), "robot_id": LaunchConfiguration("robot_id"),
+                "policy_mode": ParameterValue(LaunchConfiguration("policy_mode"), value_type=str),
                 "enable_motion": ParameterValue(LaunchConfiguration("enable_motion"), value_type=bool),
             }],
         ),

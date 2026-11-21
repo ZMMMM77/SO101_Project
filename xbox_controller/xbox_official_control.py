@@ -322,6 +322,7 @@ def control_steps(
     driver_factory=driver_for,
     observation_callback=None,
     action_callback=None,
+    policy_target=None,
 ):
     """Yield after each control cycle for either the CLI loop or a ROS timer."""
     if not args.execute:
@@ -399,6 +400,7 @@ def control_steps(
             and np.max(np.abs(np.rad2deg(measured_q - operating_pose[0]))) <= 10.0
         )
         rearm_required = False
+        policy_engaged = False
         last_target_change = last_time
         last_feedback_change = last_time
         settled_q, settled_g = measured_q.copy(), measured_g
@@ -498,6 +500,18 @@ def control_steps(
                               f"Keep holding {deploy_button}.")
 
             enabled = state.rb and not state.a and not estop and not rearm_required
+            requested_policy = None
+            if policy_target is not None:
+                sticks_released = max(abs(state.left_x), abs(state.left_y), abs(state.right_x),
+                                      abs(state.right_y), state.left_trigger, state.right_trigger) <= args.deadzone
+                requested_policy = policy_target(
+                    enabled and operating_reached and not deploy and sticks_released
+                    and not (state.lb or state.b or state.x or state.y or state.left_stick)
+                )
+                if policy_engaged and requested_policy is None and not deploy:
+                    hold_q, hold_g = measured_q.copy(), measured_g
+                policy_engaged = requested_policy is not None
+
             if deploy and not estop:
                 hold_q, hold_g = deploy[min(deploy_index, len(deploy) - 1)].copy(), operating_g
                 deploy_index += 1
@@ -509,6 +523,22 @@ def control_steps(
                     rearm_required = state.rb
                     print(f"\n{deploy_destination} POSE REACHED. Release {deploy_button}.")
                     deploy_destination = deploy_button = ""
+            elif requested_policy is not None:
+                goal_q, goal_g = requested_policy
+                max_step_rad = math.radians(12.0) * dt
+                next_q = hold_q + np.clip(goal_q - hold_q, -max_step_rad, max_step_rad)
+                try:
+                    kin.check_workspace(kin.fk(next_q).xyz_m)
+                except cart.CartesianControlError as exc:
+                    policy_target(False)
+                    hold_q, hold_g = measured_q.copy(), measured_g
+                    print(f"\nPolicy target rejected; holding: {exc}")
+                else:
+                    hold_q = next_q
+                    hold_g += float(np.clip(goal_g - hold_g, -15.0 * dt, 15.0 * dt))
+            elif policy_target is not None:
+                # In policy mode, RB only applies a validated policy target.
+                pass
             elif enabled and operating_reached and not state.lb and control_mode == "JOINT":
                 joint_commands = np.asarray(
                     [

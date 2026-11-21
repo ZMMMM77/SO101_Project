@@ -5,7 +5,8 @@ Ubuntu. The same controller logic also runs directly on macOS.
 
 ## Controls
 
-Hold `RB` to move. Release it to hold position and cancel an active pose move.
+Hold `RB` for manual motion. Releasing it during motion holds the measured
+position. Releasing it once the arm has settled keeps the last position target.
 
 | Input | JOINT mode | XYZ mode |
 | --- | --- | --- |
@@ -16,10 +17,14 @@ Hold `RB` to move. Release it to hold position and cancel an active pose move.
 | `Y` / `X` | Wrist flex | |
 | `RT` / `LT` | Open / close gripper | Open / close gripper |
 
-- Hold `RB` and tap `LB` to move between HOME and NEUTRAL. Release `RB`
-  once when the move finishes.
+- Hold `A` alone to return to NEUTRAL, keeping the current gripper opening.
+  Release `A` to stop and hold. Return the sticks, triggers, `LB` and `RB`
+  to their resting positions before using `A`.
+- Hold `RB` and tap `LB` to move between folded HOME and NEUTRAL. Release
+  `RB` when the move finishes.
 - Click the left stick with `RB` released to switch JOINT and XYZ modes.
-- Press `B` to stop and hold. Press `A` with `RB` and `B` released to reset.
+- Press `B` to stop and hold. After an E-stop, press `A` with `RB` and `B`
+  released to clear it. Release `A` before pressing it again to move.
 - Press `VIEW` for measured joints and FK, or `MENU` to exit. Support the arm
   before releasing torque.
 

@@ -10,6 +10,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Joy
 
 from common import AXES, BUTTONS, JOY_QOS, ArmTopics, configure_project, init_ros
+from policy_input import PolicyInput
 
 
 class JoyInput:
@@ -81,6 +82,14 @@ class Follower(Node):
         hz = self.declare_parameter("hz", 20.0).value
         execute = self.declare_parameter("enable_motion", False).value
         timeout = self.declare_parameter("joy_timeout", 0.25).value
+        policy_mode = self.declare_parameter("policy_mode", "off").value
+        policy_timeout = self.declare_parameter("policy_timeout", 0.75).value
+        if policy_mode not in ("off", "preview", "live"):
+            raise ValueError("policy_mode must be off, preview or live")
+        if (policy_mode == "preview" and execute) or (policy_mode == "live" and not execute):
+            raise ValueError("Preview requires motion disabled; live requires enable_motion")
+        if not 0.1 <= policy_timeout <= 2.0:
+            raise ValueError("policy_timeout must be within [0.1, 2.0] seconds")
         if not 0.1 <= timeout <= 1.0:
             raise ValueError("joy_timeout must be within [0.1, 1.0] seconds")
         args = controller.build_parser().parse_args([
@@ -89,6 +98,9 @@ class Follower(Node):
             *(["--execute"] if execute else []),
         ])
         controller.validate(args)
+        self.policy = None if policy_mode == "off" else PolicyInput(
+            self, controller.cart_module(), args, policy_mode, policy_timeout
+        )
         self.topics = ArmTopics(self)
         self.joy = JoyInput(args, xbox, controller, timeout)
         self.create_subscription(Joy, "joy", self.joy.receive, JOY_QOS)
@@ -97,7 +109,11 @@ class Follower(Node):
         self.steps = None
         self.finished = False
         self.create_timer(1.0 / hz, self.step)
-        if execute:
+        if policy_mode == "preview":
+            self.get_logger().info("Policy preview ready; serial connection disabled.")
+        elif execute:
+            if policy_mode == "live":
+                self.get_logger().info("Hold RB with the sticks and triggers released to apply fresh policy targets.")
             self.get_logger().info("Release the Xbox sticks, triggers and RB to connect the arm.")
         else:
             self.get_logger().info("Motion disabled. Waiting for Xbox input only.")
@@ -112,6 +128,7 @@ class Follower(Node):
                 self.args, teleop_factory=lambda **_: self.joy,
                 observation_callback=self.topics.position,
                 action_callback=lambda values: self.topics.position(values, command=True),
+                policy_target=self.policy.target if self.policy is not None else None,
             )
         try:
             next(self.steps)
